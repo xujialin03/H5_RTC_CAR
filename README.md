@@ -8,3 +8,5 @@ HTTPS本地签名可以用openssl生成
 nginx配置可参考 nginx配置文件夹内的内容修改
 
 修改nginx配置需要将 控制端，手机端，arduino 服务器地址全部修改过来
+
+WebRTC 包括 单向连接 切换摄像头 关闭手机端显示功能
