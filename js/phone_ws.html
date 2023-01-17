@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>手机端-Jquery</title>
+    <meta name="keywords" content="HTML超文本标记语言">
+    <meta name="viewport"
+        content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no" />
+</head>
+
+<body>
+    手机端-Jquery
+    <!-- <button id="change_video_btn">切换摄像头</button>
+    <div><button id="show_local_btn">不显示本地视频</button></div> -->
+    <div><video id="local-video" autoplay></video></div>
+
+</body>
+<script src="//cdn.bootcdn.net/ajax/libs/jquery/3.4.1/jquery.js"></script>
+<script>
+    let RTC_Connection = null;
+    let media_config = {
+        // video:{facingMode: 'user'}， //前置
+        video: { facingMode: 'environment' },//后置（两者用其一即可）
+        audio: false,
+    }
+    let RTC_Connecting = false;//连接中
+    let localStream = null;
+    let bj_id = null;
+    let ws = null;
+    let my_ws_id = null;
+    let video_front = false;
+    let show_local_video = true;
+
+    $(document).ready(function () {
+        console.log('ready')
+        $('#change_video_btn').click(onChangeVideoSourceClick);
+        $('#show_local_btn').click(onShowLocalVideoClick);
+        ws = new WebSocket('wss://192.168.2.18:4433/ws');
+        setInterval(sendPing, 100);//发送心跳包
+        ws.onopen = () => {
+            console.log('连接成功');
+            let msg = {
+                com: 'phone',
+                message: 'ready'
+            }
+            ws.send(JSON.stringify(msg));
+        };
+        ws.onmessage = msg => {
+            console.log(msg.data);
+            let msg_json = JSON.parse(msg.data);
+            console.log(msg_json);
+            switch (msg_json.com) {
+                case 'conn_success':
+                    console.log(msg_json);
+                    my_ws_id = msg_json.data.id;
+                    console.log(my_ws_id)
+                    break;
+                case 'request_offer':
+                    bj_id = msg_json.data.senderid;
+                    if (msg_json.data.video === "front") {
+                        video_front = true;
+                    }
+                    else {
+                        video_front = false;
+                    }
+                    startOffer();
+                    // console.log('request_offer', msg_json)
+                    break;
+                case 'to':
+                    console.log('收到to');
+                    toMsgHandler(msg_json.data)
+                    break;
+                case 'sdp':
+                    // console.log('收到 spd事件', msg_json.data.description)
+                    console.log('收到 answer');
+                    RTC_Connection.setRemoteDescription(new RTCSessionDescription(msg_json.data.description))
+                    RTC_Connecting = true;
+                    break;
+                case 'client_leave'://通知客户端离开事件
+                    console.log('client_leave_msg')
+                    if (msg_json.data.id === 'conClient') {
+                        if (RTC_Connection) {
+                            RTC_Connection.removeStream(localStream)
+                            document.getElementById('local-video').srcObject = null;
+                            localStream.getTracks().forEach(track => {
+                                track.stop();
+                            });
+
+                            localStream = null;
+                            // RTC_Connection = new RTCPeerConnection();
+                            RTC_Connection.close();
+                            RTC_Connection = null;
+                            RTC_Connecting = false;
+                        }
+                    }
+                    break;
+                case 'ice candidates':
+                    // console.log('ice candidates')
+                    if (msg_json.data.candidate) {
+                        var candidate = new RTCIceCandidate(msg_json.data.candidate);
+                        RTC_Connection.addIceCandidate(candidate).catch();
+                    }
+                    break;
+            }
+        };
+    });
+    function rtcinit() {
+        RTC_Connection = new RTCPeerConnection();
+        RTC_Connection.onnegotiationneeded = () => {
+            console.log('rtc onnegotiationneeded');
+            //创建offer并发送到服务器
+            RTC_Connection.createOffer().then((offer) => {
+                console.log('created offer')
+                return RTC_Connection.setLocalDescription(offer);//将offer设置为本地描述
+            }).then(() => {
+                console.log('send sdp')
+                var sdpdata = {
+                    type: 'video-offer',
+                    description: RTC_Connection.localDescription,
+                    to: bj_id,
+                    sender: my_ws_id
+                }
+                var msgdata = {
+                    com: 'sdp',
+                    data: sdpdata,
+                    to: bj_id,
+                }
+                ws.send(JSON.stringify(msgdata))
+                // console.log(sdpdata)
+                // socket.emit('sdp',sdpdata)
+            })
+        }
+        RTC_Connection.onicecandidate = ({ candidate }) => {
+            let candidates_data = { candidate: candidate, to: bj_id, sender: my_ws_id }
+            let msgdata = {
+                com: 'ice candidates',
+                to: bj_id,
+                data: candidates_data,
+            }
+            let canstr = JSON.stringify(msgdata)
+            // console.log(canstr)
+            ws.send(canstr);
+        }
+    }
+    function startOffer() {
+
+        console.log('startOffer', video_front)
+        if (video_front) {
+            media_config = {
+                video: { facingMode: 'user' },//前置
+                // video: { facingMode: 'environment' },//后置（两者用其一即可）
+                audio: false,
+            }
+        }
+        else {
+            media_config = {
+                // video:{facingMode: 'user'}， //前置
+                video: { facingMode: 'environment' },//后置（两者用其一即可）
+                audio: false,
+            }
+        }
+
+        navigator.mediaDevices.getUserMedia(media_config)
+            .then((stream) => {
+                console.log('获取摄像头成功')
+                // $('#video-local').srcObject=stream;
+                localStream = stream;
+                document.getElementById('local-video').srcObject = stream;
+            })
+            .then(rtcinit)
+            .then(() => {
+                localStream.getTracks().forEach((track) => {
+                    RTC_Connection.addTrack(track, localStream);
+                })
+            })
+            .catch((error) => {
+                console.error('error', error)
+            })
+    }
+    //处理to消息
+    function toMsgHandler(data) {
+        switch (data.com) {
+            case "show_video":
+                console.log('显示隐藏本地视频组件', data.value);
+                show_local_video = data.value;
+                if (show_local_video) {
+                    $('#local-video').css('display', 'block')
+                }
+                else {
+                    $('#local-video').css('display', 'none')
+                }
+                break;
+            case "video_change":
+                console.log('摄像头切换;', data.value)
+                video_front = data.value;
+                toggleLocalVideo();
+                break;
+        }
+    }
+    function sendPing()//发送心跳包
+    {
+        // console.log('sendPing', my_ws_id)
+        if (my_ws_id) {
+            let pingdata = {
+                com: 'ping',
+                data: {
+                    id: my_ws_id
+                }
+            }
+            ws.send(JSON.stringify(pingdata));
+        }
+    }
+    //切换摄像头
+    function onChangeVideoSourceClick() {
+        video_front = !video_front;
+        this.toggleLocalVideo();
+    }
+    function onShowLocalVideoClick() {
+        console.log('toggleLocalVideo')
+        show_local_video = !show_local_video;
+        if (show_local_video) {
+            $('#local-video').css('display', 'block')
+        }
+        else {
+            $('#local-video').css('display', 'none')
+        }
+    }
+    function toggleLocalVideo() {
+        if (RTC_Connecting) {//已连接再切换摄像头
+            if (video_front) {
+                media_config = {
+                    video: { facingMode: 'user' },//前置
+                    audio: false,
+                }
+            }
+            else {
+                media_config = {
+                    // video:{facingMode: 'user'}， //前置
+                    video: { facingMode: 'environment' },//后置（两者用其一即可）
+                    audio: false,
+                }
+            }
+            localStream.getTracks().forEach(track => {
+                track.stop();
+            });
+
+            navigator.mediaDevices.getUserMedia(media_config)
+                .then((stream) => {
+                    localStream = stream;
+                    console.log('获取摄像头成功')
+                    document.getElementById('local-video').srcObject = stream;
+                    const [videoTrack] = stream.getVideoTracks();
+                    const sender = RTC_Connection.getSenders().find((s) => s.track.kind === videoTrack.kind);
+                    console.log('Found sender:', sender, videoTrack);
+                    sender.replaceTrack(videoTrack);
+                })
+                .catch((error) => {
+                    console.error('error', error)
+                })
+
+        }
+    }
+</script>
+
+
+</html>

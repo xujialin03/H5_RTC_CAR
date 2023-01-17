@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>控制端-VUE2-单页</title>
+    <!-- 引入样式 -->
+    <!-- 最新版本的 Bootstrap 核心 CSS 文件 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+</head>
+
+<body>
+    <div id="app">
+        <div>本地wsid:{{ my_ws_id?my_ws_id:'未连接' }}</div>
+        <div>phone ws id:{{ phone_ws_id?phone_ws_id:'未连接' }}{{phone_ready}}</div>
+        <div>摄像头: <input type="checkbox" v-model="phone_show_video" /> {{phone_show_video?'手机显示':'手机不显示' }}<input
+                type="checkbox" v-model="video_front" /> {{video_front?'前面':'后面' }}</div>
+        <div>car ws id:{{car_ws_id}} ready:{{car_ready}}</div>
+        <div>{{iskeyup_down}} {{iskeydown_down}} {{iskeyleft_down}} {{iskeyright_down}} {{Servo_phone_x}}
+            {{Servo_phone_y}}</div>
+        <video id="video-remote" autoplay controls></video>
+        <button type="button" class="btn btn-primary" @click="onBtnClick" :disabled="!phone_ready">请求手机端发Offer</button>
+        <button type="button" class="btn btn-primary" @click="onBtnClickToCar" :disabled="!car_ready">请求信息到car</button>
+        <input type="checkbox" v-model="senddata" :disabled="!car_ready" />是否一直发数据
+    </div>
+
+</body>
+
+<!-- 引入vue2 -->
+<script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+<script async src="https://cdn.jsdelivr.net/npm/es-module-shims@1/dist/es-module-shims.min.js"
+    crossorigin="anonymous"></script>
+<script>
+    var app = new Vue({
+        el: '#app',
+        data: {
+            message: 'Hello Vue!',
+            my_ws_id: null,
+            phone_ready: false,
+            phone_ws_id: null,
+            car_ready: false,
+            car_ws_id: null,
+            RTC_Connection: null,
+            //car 控制变量-------------
+            senddata: false,//是否开始给后台发数据
+            iskeyup_down: false,
+            iskeydown_down: false,
+            iskeyleft_down: false,
+            iskeyright_down: false,
+            Servo_phone_x: 120,
+            Servo_phone_y: 0,
+            video_front: true,//显示前置摄像头(true)/后置摄像头
+            phone_show_video: true,//手机端是否显示摄像头视频
+            testnum: 0,
+            removeStream: null,
+        },
+        mounted() {
+            console.log('mounted')
+            setInterval(this.sendData, 200);
+            setInterval(this.sendPing, 100);//发送心跳包
+            this.RTC_Connection = new RTCPeerConnection();
+            this.RTC_Connection.ontrack = (ev) => {
+                this.testv++;
+                console.log('ontrack 事件')
+                console.log(ev)
+                console.log(this.removeStream)
+                if (this.removeStream) {
+                    this.removeStream.getTracks().forEach(track => {
+                        console.log('stop track')
+                        track.stop();
+                    });
+                }
+                this.removeStream = null;
+                this.removeStream = ev.streams[0];
+                document.getElementById('video-remote').srcObject = this.removeStream;
+
+            }
+            this.RTC_Connection.onicecandidate = ({ candidate }) => {
+                let candidates_data = { candidate: candidate, to: this.phone_ws_id, sender: this.my_ws_id }
+                let msgdata = {
+                    com: 'ice candidates',
+                    to: this.phone_ws_id,
+                    data: candidates_data,
+                }
+                let canstr = JSON.stringify(msgdata)
+                ws.send(canstr);
+            }
+            ws = new WebSocket('wss://192.168.2.18:4433/ws');
+            ws.onopen = () => {
+                let msg = {
+                    com: 'con',
+                    message: 'ready'
+                }
+                ws.send(JSON.stringify(msg));
+            };
+            ws.onclose = () => {
+                console.log('断开服务器连接');
+            }
+            ws.onerror = function () {
+                console.log("llws连接错误!");
+            };
+
+            ws.onmessage = msg => {
+                console.log(msg.data);
+                let msg_json = JSON.parse(msg.data);
+                // console.log(msg_json);
+                switch (msg_json.com) {
+                    case 'conn_success':
+                        console.log(msg_json);
+                        this.my_ws_id = msg_json.data.id
+                        break;
+                    case 'phone_ready':
+                        this.phone_ready = true;
+                        this.phone_ws_id = msg_json.data.id;
+                        console.log('phone_ready')
+                        break;
+                    case 'car_ready':
+                        this.car_ready = true;
+                        this.car_ws_id = msg_json.data.id;
+                        console.log('car_ready', this.car_ws_id)
+                        break;
+                    case 'client_leave'://通知客户端离开事件
+                        console.log('client_leave_msg')
+                        if (msg_json.data.id === 'phoneClient') {
+                            this.phone_ready = false;
+                            this.phone_ws_id = null;
+                            document.getElementById('video-remote').srcObject = null;
+                            // this.RTC_Connection.close();
+                        }
+                        if (msg_json.data.id === 'carClient') {
+                            this.car_ready = false;
+                            this.car_ws_id = null;
+                        }
+                        break;
+                    case 'sdp':
+                        let desc = new RTCSessionDescription(msg_json.data.description);
+                        this.RTC_Connection.setRemoteDescription(desc).then(() => {
+                            this.RTC_Connection.createAnswer().then((answer) => {
+                                //创建answer
+                                return this.RTC_Connection.setLocalDescription(answer);
+                            }).then(() => {
+                                //将answer发送给主叫端
+                                console.log('send sdp answer')
+                                let sdpdata = {
+                                    type: 'answer',
+                                    description: this.RTC_Connection.localDescription,
+                                    to: msg_json.data.sender,
+                                    sender: this.my_ws_id
+                                }
+                                var msgdata = {
+                                    com: 'sdp',
+                                    data: sdpdata,
+                                    to: msg_json.data.sender,
+                                }
+                                console.log('sdp answer')
+                                ws.send(JSON.stringify(msgdata));
+                            });
+                        })
+                        console.log('spd event')
+                        break;
+                    case 'ice candidates':
+                        console.log('ice candidates')
+                        if (msg_json.data.candidate) {
+                            var candidate = new RTCIceCandidate(msg_json.data.candidate);
+                            this.RTC_Connection.addIceCandidate(candidate).catch();
+                        }
+                        break;
+                }
+            };
+            document.onkeydown = function (e) {
+                console.log(window.event.keyCode)
+                if (window.event.keyCode === 38) {
+                    app.$set(app, 'iskeyup_down', true);
+                }
+                if (window.event.keyCode === 37) {
+
+                    app.$set(app, 'iskeyleft_down', true);
+                }
+                if (window.event.keyCode === 39) {
+                    app.$set(app, 'iskeyright_down', true);
+
+                }
+                if (window.event.keyCode === 40) {
+                    app.$set(app, 'iskeydown_down', true);
+                }
+                if (window.event.keyCode == 90)//Z键
+                {
+                    let new_Servo_phone_x = app.Servo_phone_x - 10;
+                    console.log(app.Servo_phone_x)
+                    if (new_Servo_phone_x < 0) {
+                        new_Servo_phone_x = 0;
+                    }
+                    app.$set(app, 'Servo_phone_x', new_Servo_phone_x);
+                }
+                if (window.event.keyCode == 67)//C键
+                {
+
+                    let new_Servo_phone_x = app.Servo_phone_x + 10;
+
+                    if (new_Servo_phone_x > 180) {
+                        new_Servo_phone_x = 180;
+                    }
+                    app.$set(app, 'Servo_phone_x', new_Servo_phone_x);
+                }
+                if (window.event.keyCode == 83)//s键
+                {
+                    let new_Servo_phone_y = app.Servo_phone_y + 10;
+                    console.log(new_Servo_phone_y)
+
+                    if (new_Servo_phone_y > 90) {
+                        new_Servo_phone_y = 90;
+                    }
+                    app.$set(app, 'Servo_phone_y', new_Servo_phone_y);
+                }
+                if (window.event.keyCode == 88)//x键
+                {
+                    let new_Servo_phone_y = app.Servo_phone_y - 10;
+
+                    if (new_Servo_phone_y < 0) {
+                        new_Servo_phone_y = 0;
+                    }
+                    app.$set(app, 'Servo_phone_y', new_Servo_phone_y);
+                }
+            }
+            document.onkeyup = function (e) {
+                if (window.event.keyCode === 38) {
+                    app.$set(app, 'iskeyup_down', false);
+                }
+                if (window.event.keyCode === 37) {
+                    app.$set(app, 'iskeyleft_down', false);
+                }
+                if (window.event.keyCode === 39) {
+
+                    app.$set(app, 'iskeyright_down', false);
+                }
+                if (window.event.keyCode === 40) {
+
+                    app.$set(app, 'iskeydown_down', false);
+                }
+            }
+        },
+        methods: {
+            onBtnClick: function () {
+                console.log('click');
+                let request_offer = {
+                    com: 'request_offer',
+                    data: { senderid: this.my_ws_id, video: 'front' },
+                    to: this.car_ws_id
+                }
+                if (!this.video_front) {
+                    request_offer.data.video = 'back';
+                }
+
+                ws.send(JSON.stringify(request_offer))
+            },
+            onBtnClickToCar: function () {
+                console.log(this.car_ws_id)
+                let cardata = {
+                    up: this.iskeyup_down ? 1 : 0,
+                    down: this.iskeydown_down ? 1 : 0,
+                    left: this.iskeyleft_down ? 1 : 0,
+                    right: this.iskeyright_down ? 1 : 0,
+                    phonex: this.Servo_phone_x,
+                    phoney: this.Servo_phone_y,
+                    test: 100,
+                }
+                let carcom = {
+                    com: 'to',
+                    data: cardata,
+                    to: this.car_ws_id
+                }
+                ws.send(JSON.stringify(carcom))
+            },
+            sendData: function () {
+                let cardata = {
+                    up: this.iskeyup_down ? 1 : 0,
+                    back: this.iskeydown_down ? 1 : 0,
+                    left: this.iskeyleft_down ? 1 : 0,
+                    right: this.iskeyright_down ? 1 : 0,
+                    phonex: this.Servo_phone_x,
+                    phoney: this.Servo_phone_y,
+                    test: 100,
+                }
+                let carcom = {
+                    com: 'to',
+                    data: cardata,
+                    to: this.car_ws_id
+                }
+                if (this.senddata && this.car_ready) {
+                    ws.send(JSON.stringify(carcom))
+                }
+            },
+            sendPing: function ()//发送心跳包
+            {
+                // console.log('sendPing')
+                if (this.my_ws_id) {
+                    let pingdata = {
+                        com: 'ping',
+                        data: {
+                            id: this.my_ws_id
+                        }
+                    }
+                    ws.send(JSON.stringify(pingdata));
+                }
+            }
+        },
+        watch: {
+            'video_front': {
+                handler(newVal, oldVal) {
+                    console.log('切换摄像头', newVal, oldVal)
+                    let phonedata = {
+                        com:'video_change',
+                        value:newVal
+                    }
+                    let phonecam = {
+                        com: 'to',
+                        data: phonedata,
+                        to: this.phone_ws_id
+                    }
+                    if (this.phone_ready) {
+                        ws.send(JSON.stringify(phonecam))
+                    }
+                }
+            },
+            'phone_show_video': {
+                handler(newVal, oldVal) {
+                    let phonedata = {
+                        com:'show_video',
+                        value:newVal
+                    }
+                    let phonecam = {
+                        com: 'to',
+                        data: phonedata,
+                        to: this.phone_ws_id
+                    }
+                    if (this.phone_ready) {
+                        ws.send(JSON.stringify(phonecam))
+                    }
+                }
+            }
+        },
+        computed: {
+            //计算属性
+            fullName: {
+                // get有什么作用 当有人读取fullName时 get就会被调用 且返回值就作为fullName的值
+                // get什么时候调用  1.初次读取fullName时 2.所依赖的数据发生变化时
+                get() {
+                    console.log('get被调用了');
+                    return this.firstName + '-' + this.lastName
+                },
+                set(value) {
+                    // set什么时候调用  当fullName被修改时
+                    // 按照指定字符把数组拆开
+                    const arr = value.split('-');
+                    this.firstName = arr[0]
+                    this.lastName = arr[1]
+                }
+            }
+        }
+    })
+</script>
+
+</html>
