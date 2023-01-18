@@ -60,6 +60,7 @@ function handlerMessage(ws, msg) {
         
     }
     if (msg_obj.com === "phone") {
+        phoneID=createid();
         let phone_client = { id: phoneID, conn: ws, isAlive: true }
         client_list.push(phone_client)
         let retu_msg = {
@@ -73,6 +74,7 @@ function handlerMessage(ws, msg) {
         }
     }
     if (msg_obj.com === "con") {
+        conID=createid();
         let con_client = { id:conID, conn: ws, isAlive: true }
         client_list.push(con_client)
         let retu_msg = {
@@ -92,6 +94,7 @@ function handlerMessage(ws, msg) {
     }
     if (msg_obj.com == "car") {
         console.log('car coming;')
+        carID=createid();
         let car_client = { id: carID, conn: ws, isAlive: true }
         client_list.push(car_client)
         console.log(client_list.length)
@@ -188,6 +191,11 @@ const aliveHandler = function () {
 
 }
 const aliveInterval = setInterval(aliveHandler, 300);
+//生成随机数id方法
+const createid=function()
+{
+    return Math.floor((Math.random()*100000));
+}
 
 
 const http_port = 3000
