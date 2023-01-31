@@ -10,6 +10,7 @@
 
 <body>
     手机端-Jquery
+    <div><span>wsid:</span><span id="wsid"></span></div>
     <!-- <button id="change_video_btn">切换摄像头</button>
     <div><button id="show_local_btn">不显示本地视频</button></div> -->
     <div><video id="local-video" autoplay></video></div>
@@ -30,12 +31,12 @@
     let my_ws_id = null;
     let video_front = false;
     let show_local_video = true;
-
+    let iceServers = $$iceServers$$
     $(document).ready(function () {
         console.log('ready')
         $('#change_video_btn').click(onChangeVideoSourceClick);
         $('#show_local_btn').click(onShowLocalVideoClick);
-        ws = new WebSocket('wss://192.168.2.18:4433/ws');
+        ws = new WebSocket("$$ws_server$$");
         setInterval(sendPing, 100);//发送心跳包
         ws.onopen = () => {
             console.log('连接成功');
@@ -53,6 +54,7 @@
                 case 'conn_success':
                     console.log(msg_json);
                     my_ws_id = msg_json.data.id;
+                    $('#wsid').html(my_ws_id);
                     console.log(my_ws_id)
                     break;
                 case 'request_offer':
@@ -105,7 +107,7 @@
         };
     });
     function rtcinit() {
-        RTC_Connection = new RTCPeerConnection();
+        RTC_Connection = new RTCPeerConnection(iceServers);
         RTC_Connection.onnegotiationneeded = () => {
             console.log('rtc onnegotiationneeded');
             //创建offer并发送到服务器

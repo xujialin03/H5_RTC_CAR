@@ -46,7 +46,8 @@ Servo ServoPY;  // 定义Servo对象来控制phoney
 
 #if USE_SSL
   // Deprecated echo.websocket.org to be replaced
-  #define WS_SERVER           "192.168.2.18"
+
+#define WS_SERVER           "192.168.2.18"
   #define WS_PORT             4433
 #else
   // To run a local WebSocket Server

@@ -1,26 +1,44 @@
+const config = require('config')
+const fs=require('fs')
+const title = config.get('title')
+console.log(title)
+console.log(process.env.NODE_ENV)
+
 const { WebSocketServer } = require('ws');
-const http = require('http');
-const fs = require('fs');
 const express = require('express')
 const app = express()
 const ws_service = new WebSocketServer({ port: 8080 });
 let conID='conClient';
 let phoneID='phoneClient';
 let carID='carClient'
-var client_list = [];
+let client_list = [];
 app.get('/', function (req, res) {
-    res.send('Hello World!')
+    res.send(config.get("title"))
 })
 app.get('/con', function (req, res) {
-    res.sendFile(__dirname + '/con_vue.html')
+    let html=fs.readFileSync(__dirname+'/con_vue.html','utf8')
+    //替换websocket服务器设备
+    html=html.replace("$$ws_server$$",config.get("ws_server"))
+    //替换iceServers服务器设备
+    let arr=config.get("iceServers");
+    let jsontxt=JSON.stringify(arr)
+    html=html.replace("$$iceServers$$",jsontxt)
+    res.send(html)
 })
 app.get('/phone', (req, res) => {
-    res.sendFile(__dirname + '/phone_ws.html')
+    let html=fs.readFileSync(__dirname+'/phone_ws.html','utf8')
+    //替换websocket服务器设备
+    html=html.replace("$$ws_server$$",config.get("ws_server"))
+    //替换iceServers服务器设备
+    let arr=config.get("iceServers");
+    let jsontxt=JSON.stringify(arr)
+    html=html.replace("$$iceServers$$",jsontxt)
+    res.send(html)
 })
 ws_service.on('connection', function connection(ws, req) {
     // console.log('conn')
     const ip = req.headers['x-forwarded-for'].split(',')[0].trim();
-    console.log(ip)
+    // console.log(ip)
     ws.on('message', function message(data) {
         // console.log('received: %s', data);
         handlerMessage(ws, data)
@@ -45,8 +63,6 @@ function handlerMessage(ws, msg) {
     }
     if (msg_obj.com === "ping") {
         // console.log('ping event')
-        // console.log("XXX",msg_obj.data.id)
-        
         let client = getClientByID(msg_obj.data.id)
         if (client==null)
         {
@@ -60,9 +76,15 @@ function handlerMessage(ws, msg) {
         
     }
     if (msg_obj.com === "phone") {
+       
+
         phoneID=createid();
         let phone_client = { id: phoneID, conn: ws, isAlive: true }
+
+        
         client_list.push(phone_client)
+        console.log("------------------")
+        console.log('phone conn',client_list,client_list.length)
         let retu_msg = {
             com: 'conn_success',
             data: { id:phoneID }
@@ -75,8 +97,12 @@ function handlerMessage(ws, msg) {
     }
     if (msg_obj.com === "con") {
         conID=createid();
+       
         let con_client = { id:conID, conn: ws, isAlive: true }
+
         client_list.push(con_client)
+        console.log("------------------")
+        console.log('con conn',client_list,client_list.length)
         let retu_msg = {
             com: 'conn_success',
             data: { id: conID }
@@ -93,11 +119,12 @@ function handlerMessage(ws, msg) {
         }
     }
     if (msg_obj.com == "car") {
-        console.log('car coming;')
+        
         carID=createid();
+        console.log('car coming;',carID)
         let car_client = { id: carID, conn: ws, isAlive: true }
         client_list.push(car_client)
-        console.log(client_list.length)
+        console.log('car conn',client_list.length)
         let retu_msg = {
             com: 'conn_success',
             data: { id: carID }
@@ -114,7 +141,7 @@ function handlerMessage(ws, msg) {
         getClientByID(phoneID).conn.send(JSON.stringify(msg_obj))
     }
     if (msg_obj.com === "to") {
-        // console.log('to event', msg_obj.to)
+        console.log('to event', msg_obj.to)
         let target = getClientByID(msg_obj.to)
         if (target)
         {
@@ -169,7 +196,6 @@ function getClientByID(tid) {
 }
 //心跳处理
 const aliveHandler = function () {
-    let msg2 = { com: 'ping' }
     let leave_client=client_list.filter(client => client.isAlive == false);//已经离开的客户端
     client_list = client_list.filter(client => client.isAlive == true);//还离开的客户端
     // console.log(client_list.length)
@@ -190,7 +216,11 @@ const aliveHandler = function () {
     })
 
 }
-const aliveInterval = setInterval(aliveHandler, 300);
+if (config.get("client_heardbit")>0)
+{
+    setInterval(aliveHandler, config.get("client_heardbit"));
+}
+// 
 //生成随机数id方法
 const createid=function()
 {
@@ -198,7 +228,7 @@ const createid=function()
 }
 
 
-const http_port = 3000
+const http_port = config.get('web_port')
 app.listen(http_port, () => {
-    console.log(`express server listen at http://localhost:${http_port}`)
+    console.log(`express server listen at http://${config.get('web_server')}:${http_port}`)
 })

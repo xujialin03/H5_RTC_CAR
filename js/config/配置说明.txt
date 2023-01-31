@@ -1,0 +1,16 @@
+{
+    "title": "本地测试", //标题，无意义
+    "web_port": 3000, //web服务端口 与 nginx 里一致
+    "web_server": "localhost", //web服务器 仅显示用 不影响
+    "client_heardbit": 0, //客户端心跳 多久没有发送心跳事件认为客户端断线 由于远程服务器不稳定 测试可以将这个设置为0
+    "ws_server": "wss://192.168.2.18:4433/ws", //websocket服务器地址 https 要nignx配置一致
+    "iceServers": [
+        {
+            "url": "stun:stun.l.google.com:19302"
+        },
+        {
+            "url": "turn:***@1.1.1.1:3478", //自己搭建的turn服务器 ***为用户名 1.1.1.1 为ip :后面是端口号
+            "credential": 123456 //turn密码
+        }
+    ]
+}

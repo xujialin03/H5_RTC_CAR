@@ -1,0 +1,16 @@
+{
+    "title": "本地测试",
+    "web_port": 3000,
+    "web_server": "localhost",
+    "client_heardbit": 300,
+    "ws_server": "wss://192.168.2.18:4433/ws",
+    "iceServers": [
+        {
+            "url": "stun:stun.l.google.com:19302"
+        },
+        {
+            "url": "turn:***@1.1.1.1:3478",
+            "credential": 123456
+        }
+    ]
+}

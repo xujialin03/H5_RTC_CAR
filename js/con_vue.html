@@ -53,12 +53,13 @@
             phone_show_video: true,//手机端是否显示摄像头视频
             testnum: 0,
             removeStream: null,
+            iceServers: $$iceServers$$
         },
         mounted() {
             console.log('mounted')
             setInterval(this.sendData, 200);
             setInterval(this.sendPing, 100);//发送心跳包
-            this.RTC_Connection = new RTCPeerConnection();
+            this.RTC_Connection = new RTCPeerConnection(this.iceServers);
             this.RTC_Connection.ontrack = (ev) => {
                 this.testv++;
                 console.log('ontrack 事件')
@@ -85,7 +86,7 @@
                 let canstr = JSON.stringify(msgdata)
                 ws.send(canstr);
             }
-            ws = new WebSocket('wss://192.168.2.18:4433/ws');
+            ws = new WebSocket("$$ws_server$$");
             ws.onopen = () => {
                 let msg = {
                     com: 'con',
@@ -286,6 +287,7 @@
                     data: cardata,
                     to: this.car_ws_id
                 }
+                // console.log(carcom)
                 if (this.senddata && this.car_ready) {
                     ws.send(JSON.stringify(carcom))
                 }
@@ -309,8 +311,8 @@
                 handler(newVal, oldVal) {
                     console.log('切换摄像头', newVal, oldVal)
                     let phonedata = {
-                        com:'video_change',
-                        value:newVal
+                        com: 'video_change',
+                        value: newVal
                     }
                     let phonecam = {
                         com: 'to',
@@ -325,8 +327,8 @@
             'phone_show_video': {
                 handler(newVal, oldVal) {
                     let phonedata = {
-                        com:'show_video',
-                        value:newVal
+                        com: 'show_video',
+                        value: newVal
                     }
                     let phonecam = {
                         com: 'to',

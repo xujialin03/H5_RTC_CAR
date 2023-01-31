@@ -1,0 +1,16 @@
+{
+    "title": "远程测试",
+    "web_port": 3001,
+    "web_server": "webrtc.domain.ga",
+    "client_heardbit": 0,
+    "ws_server": "wss://webrtc.domain.ga:4433/ws",
+    "iceServers": [
+        {
+            "url": "stun:stun.l.google.com:19302"
+        },
+        {
+            "url": "turn:***@1.1.1.1:3478",
+            "credential": 123456
+        }
+    ]
+}

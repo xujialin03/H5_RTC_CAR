@@ -1,15 +1,20 @@
 {
-  "name": "js",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "express": "^4.18.2",
-    "ws": "^8.12.0"
+    "name": "js",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+      "test": "echo \"Error: no test specified\" && exit 1",
+      "start":"node car_ws_rtc.js",
+      "start:remote":"set NODE_ENV=remote&&export NODE_ENV=remote&& node car_ws_rtc.js",
+      "pm2:remote":"pm2 start npm -- run start:remote",
+      "pm2":"pm2 start npm -- run start"
+    },
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+      "express": "^4.18.2",
+      "ws": "^8.12.0"
+    }
   }
-}
+  
